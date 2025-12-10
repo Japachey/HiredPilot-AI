@@ -1,3 +1,4 @@
+export const runtime = "nodejs";
 
 import { Webhook } from "svix";
 import type { NextApiRequest, NextApiResponse } from "next";
@@ -6,7 +7,8 @@ import { createClient } from "@supabase/supabase-js";
 
 export const config = {
   api: {
-    bodyParser: false, // Required for Clerk: do NOT parse the body
+    bodyParser: false,
+    externalResolver: true,
   },
 };
 
@@ -17,17 +19,17 @@ const supabase = createClient(
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") {
-    return res.status(405).send("Method Not Allowed"); // <--- Your Clerk log shows THIS
+    return res.status(405).send("Method Not Allowed");
   }
 
-  const payload = (await buffer(req)).toString();
+  const rawBody = (await buffer(req)).toString();
   const headers = req.headers;
 
   const wh = new Webhook(process.env.CLERK_SECRET_WEBHOOK_KEY!);
 
   let event;
   try {
-    event = wh.verify(payload, {
+    event = wh.verify(rawBody, {
       "svix-id": headers["svix-id"] as string,
       "svix-timestamp": headers["svix-timestamp"] as string,
       "svix-signature": headers["svix-signature"] as string,
@@ -37,8 +39,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(400).send("Invalid webhook signature");
   }
 
-  // Test print
-  console.log("Clerk webhook event:", event.type, event.data);
+  console.log("Clerk webhook event:", event.type);
 
   return res.status(200).send("Webhook received");
 }
