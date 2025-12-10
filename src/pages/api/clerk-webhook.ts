@@ -25,7 +25,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const rawBody = (await buffer(req)).toString();
   const headers = req.headers;
 
-  const wh = new Webhook(process.env.CLERK_SECRET_WEBHOOK_KEY!);
+  const wh = new Webhook(process.env.CLERK_WEBHOOK_SECRET!);
 
   let event;
   try {
