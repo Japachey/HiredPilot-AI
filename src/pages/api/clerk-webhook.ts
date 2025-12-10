@@ -1,55 +1,44 @@
-export const config = {
-  api: {
-    bodyParser: false,
-  },
-};
 
 import { Webhook } from "svix";
 import type { NextApiRequest, NextApiResponse } from "next";
+import { buffer } from "micro";
 import { createClient } from "@supabase/supabase-js";
+
+export const config = {
+  api: {
+    bodyParser: false, // Required for Clerk: do NOT parse the body
+  },
+};
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
+    return res.status(405).send("Method Not Allowed"); // <--- Your Clerk log shows THIS
   }
 
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
+  const payload = (await buffer(req)).toString();
+  const headers = req.headers;
 
-  const svix_id = req.headers["svix-id"] as string;
-  const svix_timestamp = req.headers["svix-timestamp"] as string;
-  const svix_signature = req.headers["svix-signature"] as string;
-
-  if (!svix_id || !svix_timestamp || !svix_signature) {
-    return res.status(400).json({ error: "Missing svix headers" });
-  }
-
-  const body = req.body;
-  const wh = new Webhook(process.env.CLERK_WEBHOOK_SECRET!);
+  const wh = new Webhook(process.env.CLERK_SECRET_WEBHOOK_KEY!);
 
   let event;
-
   try {
-    event = wh.verify(JSON.stringify(body), {
-      "svix-id": svix_id,
-      "svix-timestamp": svix_timestamp,
-      "svix-signature": svix_signature,
+    event = wh.verify(payload, {
+      "svix-id": headers["svix-id"] as string,
+      "svix-timestamp": headers["svix-timestamp"] as string,
+      "svix-signature": headers["svix-signature"] as string,
     });
-  } catch (err) {
-    console.error(err);
-    return res.status(400).json({ error: "Invalid webhook signature" });
+  } catch (error) {
+    console.error("Webhook verification failed:", error);
+    return res.status(400).send("Invalid webhook signature");
   }
 
-  if (event.type === "user.created") {
-    const data = event.data;
-    await supabase.from("profiles").insert({
-      user_id: data.id,
-      email: data.email_addresses[0].email_address,
-      name: `${data.first_name || ""} ${data.last_name || ""}`,
-    });
-  }
+  // Test print
+  console.log("Clerk webhook event:", event.type, event.data);
 
-  return res.json({ success: true });
+  return res.status(200).send("Webhook received");
 }
